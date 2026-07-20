@@ -12,7 +12,7 @@ sys.path.insert(0, src_dir)
 sys.path.insert(0, root_dir)
 
 # Now we can import and run
-from chess_game.main import main
+from main import main
 
 if __name__ == "__main__":
     main()
