@@ -1,58 +1,123 @@
-# Chess Game
+# ♟️ Chess AI
 
-A Python chess game with GUI using Pygame and a chess AI with multiple difficulty levels.
+A desktop chess application built with **Python**, **Pygame**, and **python-chess**, featuring a modular architecture and an AI opponent powered by **Minimax** with **Alpha-Beta Pruning**.
+
+---
 
 ## Features
 
-- Interactive chess board with piece movement
-- AI opponent with 3 difficulty levels (Beginner, Intermediate, Advanced)
-- Pawn promotion handling
-- Check and checkmate detection
-- Undo move functionality
-- Game restart and menu navigation
+- ♟️ Interactive chess board with legal move validation
+- 🤖 AI opponent with **3 difficulty levels**
+- 🧠 Minimax search with Alpha-Beta pruning
+- 📈 Piece-Square Table positional evaluation
+- ⚡ Move ordering for faster search
+- 📚 Built-in opening book
+- 📊 Live AI statistics
+  - Search depth
+  - Evaluation score
+  - Nodes searched
+  - Search time
+  - Best move
+- 📝 Move history in SAN notation
+- 📄 PGN export
+- 🔄 Undo and restart game
+- ♛ Pawn promotion
+- ✅ Check, checkmate, and stalemate detection
+- 🖥️ Background AI computation for a responsive UI
 
-## Requirements
+---
 
-- Python 3.7+
-- pygame
+## AI Features
+
+The chess engine includes:
+
+- Minimax Algorithm
+- Alpha-Beta Pruning
+- Piece-Square Tables
+- Move Ordering
+- Opening Book
+- Background Search Thread
+
+---
+
+## Tech Stack
+
+- Python
+- Pygame
 - python-chess
+
+---
+
+## Project Structure
+
+```
+src/
+├── assets/
+├── core/
+│   ├── ai.py
+│   ├── game.py
+│   └── opening_book.py
+├── ui/
+│   ├── board.py
+│   ├── menu.py
+│   ├── promotion.py
+│   └── sidebar.py
+└── utils/
+```
+
+---
 
 ## Installation
 
-1. Install the required dependencies:
+Clone the repository
+
+```bash
+git clone <repository-url>
+cd <repository-folder>
+```
+
+Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the game:
+Run the application
+
 ```bash
 python main.py
 ```
 
-**For IDE users:** Use the play button on `src/chess_game/run_direct.py`
+---
 
-## How to Play
+## Controls
 
-1. Select a difficulty level from the main menu
-2. Click on a piece to select it (highlighted in yellow)
-3. Click on a valid move square (shown with green dots) to move
-4. The AI will automatically make its move after yours
-5. Use the sidebar buttons to:
-   - Undo your last move
-   - Restart the current game
-   - Return to the main menu
+| Action | Control |
+|---------|---------|
+| Select Piece | Left Click |
+| Move Piece | Left Click |
+| Undo | Sidebar Button |
+| Restart | Sidebar Button |
+| Main Menu | Sidebar Button |
 
-## Game Controls
+---
 
-- **Mouse Click**: Select pieces and make moves
-- **Undo Button**: Undo the last move (undoes both player and AI moves)
-- **Restart Button**: Start a new game with the same difficulty
-- **Back to Menu**: Return to difficulty selection
+## Screenshots
 
-## AI Difficulty Levels
+> Screenshots will be added here.
 
-- **Beginner**: Shallow search depth (1), 40% random moves
-- **Intermediate**: Medium search depth (3), 10% random moves  
-- **Advanced**: Deep search depth (4), deterministic play with positional evaluation
+---
 
-Enjoy playing chess!
+## Future Improvements
+
+- Sound effects
+- Piece animations
+- Unit tests
+- GitHub Actions CI
+- Additional opening lines
+
+---
+
+## License
+
+This project is licensed under the MIT License.

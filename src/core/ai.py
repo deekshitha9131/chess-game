@@ -3,6 +3,8 @@ import random
 import time
 from typing import Optional
 
+from .opening_book import OPENING_BOOK
+
 
 class ChessAI:
     """
@@ -114,40 +116,108 @@ class ChessAI:
 
         # Statistics (used later in sidebar)
         self.nodes_searched = 0
-        self.last_search_time = 0
+        self.last_search_time = 0.0
         self.last_evaluation = 0
+        self.last_best_move: Optional[chess.Move] = None
+        self.last_best_move_san: Optional[str] = None
+        self.has_completed_search = False
 
-    def get_piece_square_value(self, piece: chess.Piece, square: int) -> int:
+    def _material_score(self, piece: chess.Piece) -> int:
+        """Return material value for a single piece from White's perspective."""
+        value = self.PIECE_VALUES[piece.piece_type]
+        return value if piece.color == chess.WHITE else -value
 
-        # Flip table for black pieces
+    def _piece_square_score(self, piece: chess.Piece, square: int) -> int:
+        """Return the positional PST bonus for a single piece from White's perspective."""
         if piece.color == chess.BLACK:
             square = chess.square_mirror(square)
 
         if piece.piece_type == chess.PAWN:
-            return self.PAWN_TABLE[square]
+            bonus = self.PAWN_TABLE[square]
+        elif piece.piece_type == chess.KNIGHT:
+            bonus = self.KNIGHT_TABLE[square]
+        elif piece.piece_type == chess.BISHOP:
+            bonus = self.BISHOP_TABLE[square]
+        elif piece.piece_type == chess.ROOK:
+            bonus = self.ROOK_TABLE[square]
+        elif piece.piece_type == chess.QUEEN:
+            bonus = self.QUEEN_TABLE[square]
+        elif piece.piece_type == chess.KING:
+            bonus = self.KING_TABLE[square]
+        else:
+            bonus = 0
 
-        if piece.piece_type == chess.KNIGHT:
-            return self.KNIGHT_TABLE[square]
+        return bonus if piece.color == chess.WHITE else -bonus
 
-        if piece.piece_type == chess.BISHOP:
-            return self.BISHOP_TABLE[square]
+    def _get_book_move(self, board: chess.Board) -> Optional[chess.Move]:
+        """Return a book move for the current position if the FEN exists in the opening book."""
+        fen = board.fen()
+        moves = OPENING_BOOK.get(fen)
+        if not moves:
+            return None
 
-        if piece.piece_type == chess.ROOK:
-            return self.ROOK_TABLE[square]
+        book_move = random.choice(moves)
+        try:
+            move = chess.Move.from_uci(book_move)
+        except ValueError:
+            return None
 
-        if piece.piece_type == chess.QUEEN:
-            return self.QUEEN_TABLE[square]
+        if move in board.legal_moves:
+            return move
 
-        if piece.piece_type == chess.KING:
-            return self.KING_TABLE[square]
+        return None
 
-        return 0
+    def _order_moves(self, board: chess.Board, moves: list[chess.Move]) -> list[chess.Move]:
+        """Return legal moves sorted by lightweight tactical heuristics."""
+        scored_moves: list[tuple[int, chess.Move]] = []
+
+        for move in moves:
+            piece = board.piece_at(move.from_square)
+            captured_piece = board.piece_at(move.to_square)
+            score = 0
+
+            board.push(move)
+            try:
+                # Checkmate is the strongest possible outcome and should be searched first.
+                if board.is_checkmate():
+                    score += 1000000
+
+                # Promotions are often tactically important and should be tried early.
+                if move.promotion is not None:
+                    score += 500000
+
+                # MVV-LVA: prefer capturing a more valuable enemy piece with a less valuable attacker.
+                if captured_piece is not None:
+                    victim_value = self.PIECE_VALUES[captured_piece.piece_type]
+                    attacker_value = self.PIECE_VALUES[piece.piece_type]
+                    score += victim_value * 10 - attacker_value
+
+                # Checks are usually stronger than quiet moves and should be preferred.
+                if board.is_check():
+                    score += 10000
+
+                # Small bonus for moving toward the center.
+                center_squares = {chess.E4, chess.D4, chess.E5, chess.D5}
+                if move.to_square in center_squares:
+                    score += 20
+            finally:
+                board.pop()
+
+            scored_moves.append((score, move))
+
+        scored_moves.sort(key=lambda item: item[0], reverse=True)
+        return [move for _, move in scored_moves]
+
+    def get_piece_square_value(self, piece: chess.Piece, square: int) -> int:
+        """Get the PST bonus for a piece on a square."""
+        return self._piece_square_score(piece, square)
+
     # ----------------------------------------------------
     # Evaluation Functions
     # ----------------------------------------------------
 
     def evaluate_material(self, board: chess.Board) -> int:
-        """Evaluate material + piece positions."""
+        """Evaluate material + piece-square bonuses for the current board."""
 
         score = 0
 
@@ -157,13 +227,9 @@ class ChessAI:
             if piece is None:
                 continue
 
-            value = self.PIECE_VALUES[piece.piece_type]
-            positional = self.get_piece_square_value(piece, square)
-
-            if piece.color == chess.WHITE:
-                score += value + positional
-            else:
-                score -= value + positional
+            material_score = self._material_score(piece)
+            piece_square_bonus = self._piece_square_score(piece, square)
+            score += material_score + piece_square_bonus
 
         return score
 
@@ -274,8 +340,9 @@ class ChessAI:
         if maximizing:
 
             max_eval = -float("inf")
+            ordered_moves = self._order_moves(board, list(board.legal_moves))
 
-            for move in board.legal_moves:
+            for move in ordered_moves:
 
                 board.push(move)
 
@@ -301,8 +368,9 @@ class ChessAI:
         else:
 
             min_eval = float("inf")
+            ordered_moves = self._order_moves(board, list(board.legal_moves))
 
-            for move in board.legal_moves:
+            for move in ordered_moves:
 
                 board.push(move)
 
@@ -324,3 +392,81 @@ class ChessAI:
                     break
 
             return min_eval
+    # ----------------------------------------------------
+    # Root Move Selection
+    # ----------------------------------------------------
+
+    def find_best_move(self, board: chess.Board) -> Optional[chess.Move]:
+        """
+        Search from the root and return the best legal move
+        for the side to move, using the existing minimax +
+        alpha-beta search.
+        """
+
+        legal_moves = list(board.legal_moves)
+
+        if not legal_moves:
+            return None
+
+        book_move = self._get_book_move(board)
+        if book_move is not None:
+            self.nodes_searched = 0
+            self.last_search_time = 0.0
+            self.last_evaluation = 0
+            self.last_best_move = book_move
+            self.last_best_move_san = None if book_move is None else board.san(book_move)
+            self.has_completed_search = True
+            return book_move
+
+        ordered_moves = self._order_moves(board, legal_moves)
+
+        self.nodes_searched = 0
+        self.last_search_time = 0.0
+        self.last_evaluation = 0
+        self.last_best_move = None
+        self.last_best_move_san = None
+        self.has_completed_search = False
+        start_time = time.perf_counter()
+
+        maximizing = board.turn == chess.WHITE
+
+        best_move = None
+        best_eval = -float("inf") if maximizing else float("inf")
+
+        alpha = -float("inf")
+        beta = float("inf")
+
+        for move in ordered_moves:
+
+            board.push(move)
+
+            evaluation = self.minimax(
+                board,
+                self.depth - 1,
+                alpha,
+                beta,
+                not maximizing,
+            )
+
+            board.pop()
+
+            if maximizing:
+                if evaluation > best_eval:
+                    best_eval = evaluation
+                    best_move = move
+                alpha = max(alpha, evaluation)
+            else:
+                if evaluation < best_eval:
+                    best_eval = evaluation
+                    best_move = move
+                beta = min(beta, evaluation)
+
+        self.last_search_time = time.perf_counter() - start_time
+        self.last_evaluation = best_eval
+        self.last_best_move = best_move
+        self.last_best_move_san = None if best_move is None else board.san(best_move)
+        self.has_completed_search = True
+
+        # Fallback safety net: should not trigger since legal_moves
+        # is non-empty, but guarantees a legal move is always returned.
+        return best_move if best_move is not None else legal_moves[0]

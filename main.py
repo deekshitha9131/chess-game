@@ -7,7 +7,6 @@ from src.ui.sidebar import SidebarRenderer
 from src.ui.promotion import PromotionDialog
 from src.utils.constants import *
 
-
 class ChessApp:
     def __init__(self):
         pygame.init()
@@ -66,8 +65,7 @@ class ChessApp:
                         self.check_timer = 60
                         
                     if not self.game.game_over and self.game.board.turn == chess.BLACK:
-                        self.game.ai_thinking = True
-                        pygame.time.set_timer(pygame.USEREVENT, 500)
+                        self.game.start_ai_search()
             else:
                 if piece and piece.color == chess.WHITE:
                     self.game.selected_square = square
@@ -87,14 +85,6 @@ class ChessApp:
                 if event.type == pygame.QUIT:
                     running = False
                     
-                elif event.type == pygame.USEREVENT and self.game.ai_thinking:
-                    pygame.time.set_timer(pygame.USEREVENT, 0)
-                    ai_move = self.game.get_ai_move()
-                    if ai_move:
-                        self.game.make_move(ai_move)
-                        if self.game.board.is_check():
-                            self.check_timer = 60
-                    self.game.ai_thinking = False
                     
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     pos = pygame.mouse.get_pos()
@@ -117,6 +107,11 @@ class ChessApp:
                         else:
                             self.handle_board_click(pos)
             
+            if self.game.ai_thinking and self.game.ai_thread is None:
+                if self.game.apply_pending_ai_move():
+                    if self.game.board.is_check():
+                        self.check_timer = 60
+
             # Update check timer
             if self.check_timer > 0:
                 self.check_timer -= 1
