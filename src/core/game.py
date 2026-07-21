@@ -19,6 +19,7 @@ class ChessGame:
         self.message = ""
         self.ai_thinking = False
         self.pending_ai_move: Optional[chess.Move] = None
+        self.pending_move: Optional[chess.Move] = None
         self.ai_thread: Optional[threading.Thread] = None
         self.move_history: list[str] = []
         self._last_exported_pgn = ""
@@ -33,6 +34,7 @@ class ChessGame:
         self.message = ""
         self.ai_thinking = False
         self.pending_ai_move = None
+        self.pending_move = None
         self.ai_thread = None
         self.move_history = []
         self._last_exported_pgn = ""
@@ -46,6 +48,30 @@ class ChessGame:
             return True
         return False
 
+    def queue_pending_move(self, move: chess.Move) -> bool:
+        """Store a legal move without applying it to the board yet."""
+        if self.board and move in self.board.legal_moves:
+            self.pending_move = move
+            return True
+        return False
+
+    def commit_pending_move(self) -> bool:
+        """Apply the queued move after animation completes."""
+        if self.board is None or self.pending_move is None:
+            return False
+
+        move = self.pending_move
+        self.pending_move = None
+
+        if move not in self.board.legal_moves:
+            return False
+
+        san_move = self.board.san(move)
+        self.board.push(move)
+        self.move_history.append(san_move)
+        self._check_game_state()
+        return True
+
     def undo_move(self):
         if self.board and len(self.board.move_stack) > 0:
             self.board.pop()
@@ -57,6 +83,7 @@ class ChessGame:
                     self.move_history.pop()
             self.game_over = False
             self.message = ""
+            self.pending_move = None
 
     @classmethod
     def get_active_instance(cls) -> Optional["ChessGame"]:
@@ -64,7 +91,7 @@ class ChessGame:
 
     def get_ai_move(self):
         if self.ai and self.board:
-            return self.ai.find_best_move(self.board)
+            return self.ai.find_best_move(self.board.copy(stack=True))
         return None
 
     def start_ai_search(self) -> None:
@@ -77,7 +104,8 @@ class ChessGame:
 
         def _worker() -> None:
             try:
-                move = self.ai.find_best_move(self.board)
+                search_board = self.board.copy(stack=True) if self.board is not None else None
+                move = self.ai.find_best_move(search_board) if search_board is not None else None
                 self.pending_ai_move = move
             except Exception as exc:
                 print(f"AI search error: {exc}")

@@ -15,7 +15,7 @@ class BoardRenderer:
             images[piece] = pygame.transform.scale(images[piece], (SQUARE_SIZE, SQUARE_SIZE))
         return images
 
-    def draw(self, board, selected_square=None, valid_moves=None):
+    def draw(self, board, selected_square=None, valid_moves=None, animated_piece=None, skip_square=None):
         valid_moves = valid_moves or []
         
         for row in range(8):
@@ -49,9 +49,13 @@ class BoardRenderer:
                 
                 # Draw pieces
                 piece = board.piece_at(square)
-                if piece:
+                if piece and square != skip_square:
                     self.screen.blit(self.piece_images[piece.symbol()], 
                                    (col * SQUARE_SIZE, row * SQUARE_SIZE))
+
+        if animated_piece:
+            piece, (x, y) = animated_piece
+            self.screen.blit(self.piece_images[piece.symbol()], (x, y))
 
     def coords_to_square(self, x, y):
         if 0 <= x < BOARD_SIZE and 0 <= y < BOARD_SIZE:

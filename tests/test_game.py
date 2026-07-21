@@ -1,3 +1,5 @@
+import time
+
 import chess
 
 from src.core.game import ChessGame
@@ -25,6 +27,22 @@ def test_make_move_updates_history():
     assert len(game.move_history) == 1
 
 
+def test_pending_move_is_not_applied_until_committed():
+    game = ChessGame()
+
+    game.start_new_game("beginner")
+
+    move = chess.Move.from_uci("e2e4")
+
+    assert game.queue_pending_move(move)
+    assert game.board.move_stack == []
+    assert game.move_history == []
+
+    assert game.commit_pending_move()
+    assert len(game.board.move_stack) == 1
+    assert len(game.move_history) == 1
+
+
 def test_undo_removes_history():
     game = ChessGame()
 
@@ -35,6 +53,36 @@ def test_undo_removes_history():
     game.undo_move()
 
     assert len(game.move_history) == 0
+
+
+def test_ai_search_uses_independent_board_copy():
+    game = ChessGame()
+
+    game.start_new_game("beginner")
+
+    class MutatingAI:
+        def __init__(self):
+            self.level = "beginner"
+            self.depth = 1
+            self.randomness = 0.0
+            self.nodes_searched = 0
+            self.last_search_time = 0.0
+            self.last_evaluation = 0
+            self.last_best_move = None
+            self.last_best_move_san = None
+            self.has_completed_search = False
+
+        def find_best_move(self, board):
+            board.push(chess.Move.from_uci("e2e4"))
+            time.sleep(0.1)
+            return None
+
+    game.ai = MutatingAI()
+    game.start_ai_search()
+
+    time.sleep(0.2)
+
+    assert game.board.move_stack == []
 
 
 def test_export_pgn_contains_headers():

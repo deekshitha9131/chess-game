@@ -11,6 +11,14 @@ def test_ai_initialization():
     assert ai.randomness == 0.10
 
 
+def test_difficulty_levels_use_distinct_search_depths():
+    beginner = ChessAI("beginner")
+    intermediate = ChessAI("intermediate")
+    advanced = ChessAI("advanced")
+
+    assert beginner.depth < intermediate.depth < advanced.depth
+
+
 def test_material_evaluation_start_position():
     ai = ChessAI()
 

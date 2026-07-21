@@ -17,6 +17,30 @@ class ChessAI:
     - Center Control
     """
 
+    DIFFICULTY_SETTINGS = {
+        "beginner": {
+            "candidate_moves": 10,
+            "best_move_probability": 0.30,
+            "mistake_probability": 0.35,
+            "blunder_probability": 0.10,
+            "randomness": 0.60,
+        },
+        "intermediate": {
+            "candidate_moves": 4,
+            "best_move_probability": 0.70,
+            "mistake_probability": 0.15,
+            "blunder_probability": 0.03,
+            "randomness": 0.20,
+        },
+        "advanced": {
+            "candidate_moves": 1,
+            "best_move_probability": 0.98,
+            "mistake_probability": 0.01,
+            "blunder_probability": 0.00,
+            "randomness": 0.00,
+        },
+    }
+
     PIECE_VALUES = {
         chess.PAWN: 100,
         chess.KNIGHT: 320,
@@ -100,19 +124,21 @@ class ChessAI:
 
     def __init__(self, level: str = "intermediate"):
 
-        self.level = level
+        self.level = level.lower()
+        self.level_config = self.DIFFICULTY_SETTINGS.get(
+            self.level,
+            self.DIFFICULTY_SETTINGS["intermediate"],
+        )
 
-        if level == "beginner":
-            self.depth = 1
+        if self.level == "beginner":
+            self.depth = 2
             self.randomness = 0.40
-
-        elif level == "intermediate":
-            self.depth = 3
-            self.randomness = 0.10
-
-        else:
+        elif self.level == "advanced":
             self.depth = 4
             self.randomness = 0.0
+        else:
+            self.depth = 3
+            self.randomness = 0.10
 
         # Statistics (used later in sidebar)
         self.nodes_searched = 0
@@ -166,6 +192,92 @@ class ChessAI:
             return move
 
         return None
+
+    def _rank_root_moves(self, board: chess.Board, ordered_moves: list[chess.Move]) -> list[tuple[chess.Move, int]]:
+        """Evaluate each legal root move once, reusing the existing minimax search logic."""
+        maximizing = board.turn == chess.WHITE
+        ranked_moves: list[tuple[chess.Move, int]] = []
+
+        alpha = -float("inf")
+        beta = float("inf")
+
+        for move in ordered_moves:
+            board.push(move)
+            evaluation = self.minimax(
+                board,
+                self.depth - 1,
+                alpha,
+                beta,
+                not maximizing,
+            )
+            board.pop()
+
+            ranked_moves.append((move, evaluation))
+
+            if maximizing:
+                alpha = max(alpha, evaluation)
+            else:
+                beta = min(beta, evaluation)
+
+        if maximizing:
+            ranked_moves.sort(key=lambda item: item[1], reverse=True)
+        else:
+            ranked_moves.sort(key=lambda item: item[1])
+
+        return ranked_moves
+
+    def _choose_move_by_difficulty(self, board: chess.Board, ranked_moves: list[tuple[chess.Move, int]]) -> tuple[chess.Move, int]:
+        """Select a move from the ranked list using lightweight difficulty-aware heuristics."""
+        if not ranked_moves:
+            raise ValueError("No ranked moves available")
+
+        config = self.level_config
+        pool_size = max(1, min(int(config["candidate_moves"]), len(ranked_moves)))
+
+        if self.level == "beginner":
+            probability = random.random()
+            if probability < config["best_move_probability"]:
+                selected_move, selected_score = ranked_moves[0]
+            elif probability < config["best_move_probability"] + 0.40:
+                candidates = ranked_moves[: min(3, pool_size)]
+                selected_move, selected_score = random.choice(candidates)
+            elif probability < config["best_move_probability"] + 0.40 + 0.20:
+                candidates = ranked_moves[: min(5, pool_size)]
+                selected_move, selected_score = random.choice(candidates)
+            else:
+                if config["blunder_probability"] > 0 and random.random() < config["blunder_probability"]:
+                    lower_candidates = ranked_moves[min(5, pool_size):]
+                    if lower_candidates:
+                        selected_move, selected_score = random.choice(lower_candidates)
+                    else:
+                        selected_move, selected_score = random.choice(ranked_moves[:pool_size])
+                else:
+                    selected_move, selected_score = random.choice(ranked_moves[:pool_size])
+
+        elif self.level == "intermediate":
+            probability = random.random()
+            if probability < config["best_move_probability"]:
+                selected_move, selected_score = ranked_moves[0]
+            elif probability < config["best_move_probability"] + config["mistake_probability"]:
+                candidates = ranked_moves[: min(3, pool_size)]
+                selected_move, selected_score = random.choice(candidates)
+            else:
+                candidates = ranked_moves[: min(5, pool_size)]
+                selected_move, selected_score = random.choice(candidates)
+
+        else:
+            if random.random() < config["best_move_probability"]:
+                selected_move, selected_score = ranked_moves[0]
+            elif random.random() < self.randomness + 0.05:
+                if len(ranked_moves) > 1:
+                    second_choice = ranked_moves[1]
+                    selected_move, selected_score = second_choice
+                else:
+                    selected_move, selected_score = ranked_moves[0]
+            else:
+                selected_move, selected_score = ranked_moves[0]
+
+        return selected_move, selected_score
 
     def _order_moves(self, board: chess.Board, moves: list[chess.Move]) -> list[chess.Move]:
         """Return legal moves sorted by lightweight tactical heuristics."""
@@ -428,45 +540,15 @@ class ChessAI:
         self.has_completed_search = False
         start_time = time.perf_counter()
 
-        maximizing = board.turn == chess.WHITE
-
-        best_move = None
-        best_eval = -float("inf") if maximizing else float("inf")
-
-        alpha = -float("inf")
-        beta = float("inf")
-
-        for move in ordered_moves:
-
-            board.push(move)
-
-            evaluation = self.minimax(
-                board,
-                self.depth - 1,
-                alpha,
-                beta,
-                not maximizing,
-            )
-
-            board.pop()
-
-            if maximizing:
-                if evaluation > best_eval:
-                    best_eval = evaluation
-                    best_move = move
-                alpha = max(alpha, evaluation)
-            else:
-                if evaluation < best_eval:
-                    best_eval = evaluation
-                    best_move = move
-                beta = min(beta, evaluation)
+        ranked_moves = self._rank_root_moves(board, ordered_moves)
+        selected_move, selected_score = self._choose_move_by_difficulty(board, ranked_moves)
 
         self.last_search_time = time.perf_counter() - start_time
-        self.last_evaluation = best_eval
-        self.last_best_move = best_move
-        self.last_best_move_san = None if best_move is None else board.san(best_move)
+        self.last_evaluation = selected_score
+        self.last_best_move = selected_move
+        self.last_best_move_san = None if selected_move is None else board.san(selected_move)
         self.has_completed_search = True
 
         # Fallback safety net: should not trigger since legal_moves
         # is non-empty, but guarantees a legal move is always returned.
-        return best_move if best_move is not None else legal_moves[0]
+        return selected_move if selected_move is not None else legal_moves[0]
