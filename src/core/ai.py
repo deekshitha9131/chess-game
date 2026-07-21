@@ -129,6 +129,7 @@ class ChessAI:
             self.level,
             self.DIFFICULTY_SETTINGS["intermediate"],
         )
+
         if self.level == "beginner":
             self.depth = 2
             self.randomness = 0.40
